@@ -1,4 +1,5 @@
 import streamlit as st
+import pandas as pd
 
 from parser import parse_query
 from search import search_grocery
@@ -19,14 +20,29 @@ if st.button("Search"):
 
     results = search_grocery(parsed_query)
 
-    st.subheader("Live Search Results")
+    if len(results) == 0:
 
-    for result in results["results"]:
+        st.warning(
+            "No grocery price results found."
+        )
 
-        st.write("Title:", result["title"])
+    else:
 
-        st.write("URL:", result["url"])
+        st.subheader("Price Comparison Results")
 
-        st.write("Content:", result["content"])
+        df = pd.DataFrame(results)
 
-        st.write("---")
+        st.dataframe(df)
+
+        cheapest = results[0]
+
+        st.success(
+
+            f"""
+            Cheapest Option:
+
+            {cheapest['title']}
+
+            Price: ₹{cheapest['price']}
+            """
+        )
