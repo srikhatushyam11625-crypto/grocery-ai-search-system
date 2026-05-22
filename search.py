@@ -4,15 +4,15 @@ import re
 from dotenv import load_dotenv
 from tavily import TavilyClient
 
+# Load environment variables
 load_dotenv()
 
 api_key = os.getenv("TAVILY_API_KEY")
 
 client = TavilyClient(api_key=api_key)
 
-
 # -----------------------------------
-# Grocery platforms
+# Supported grocery platforms
 # -----------------------------------
 
 platforms = {
@@ -28,7 +28,26 @@ platforms = {
 
 
 # -----------------------------------
-# Extract numeric price
+# Check whether result is relevant
+# -----------------------------------
+
+def is_relevant_result(content):
+
+    content = content.lower()
+
+    # Must contain sugar
+    if "sugar" not in content:
+        return False
+
+    # Must contain 1kg reference
+    if "1 kg" not in content and "1kg" not in content:
+        return False
+
+    return True
+
+
+# -----------------------------------
+# Smart price extraction
 # -----------------------------------
 
 def extract_price(text):
@@ -44,22 +63,34 @@ def extract_price(text):
 
     text = text.lower()
 
+    detected_prices = []
+
     for pattern in patterns:
 
-        match = re.search(pattern, text)
+        matches = re.findall(pattern, text)
 
-        if match:
+        for match in matches:
 
-            value = re.findall(r'\d+', match.group())
+            numbers = re.findall(r'\d+', match)
 
-            if value:
-                return int(value[0])
+            if numbers:
+
+                value = int(numbers[0])
+
+                # Realistic 1kg sugar price range
+                if 20 <= value <= 100:
+
+                    detected_prices.append(value)
+
+    if detected_prices:
+
+        return min(detected_prices)
 
     return None
 
 
 # -----------------------------------
-# Search one grocery platform
+# Search a single grocery platform
 # -----------------------------------
 
 def search_platform(
@@ -91,18 +122,23 @@ def search_platform(
         max_results=3
     )
 
-    best_price = None
-
     best_result = None
+
+    best_price = None
 
     for result in response["results"]:
 
-        content = result.get("content", "")
-
         title = result.get("title", "")
+
+        content = result.get("content", "")
 
         url = result.get("url", "")
 
+        # Relevance filtering
+        if not is_relevant_result(content):
+            continue
+
+        # Price extraction
         price = extract_price(content)
 
         if price is not None:
@@ -115,20 +151,14 @@ def search_platform(
 
                     "platform": platform_name,
 
-                    "title": title,
-
-                    "price": price,
-
-                    "url": url,
-
-                    "content": content
+                    "price": price
                 }
 
     return best_result
 
 
 # -----------------------------------
-# Compare all platforms
+# Compare all grocery platforms
 # -----------------------------------
 
 def compare_grocery_prices(parsed_query):
@@ -157,9 +187,10 @@ def compare_grocery_prices(parsed_query):
         )
 
         if result:
+
             all_results.append(result)
 
-    # Sort lowest price first
+    # Sort by lowest price
     all_results = sorted(
 
         all_results,
