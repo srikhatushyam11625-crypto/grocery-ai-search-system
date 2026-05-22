@@ -11,12 +11,29 @@ api_key = os.getenv("TAVILY_API_KEY")
 client = TavilyClient(api_key=api_key)
 
 
-# -----------------------------
-# Extract price from text
-# -----------------------------
+# -----------------------------------
+# Grocery platforms
+# -----------------------------------
+
+platforms = {
+
+    "BigBasket": "bigbasket.com",
+
+    "Blinkit": "blinkit.com",
+
+    "Instamart": "swiggy.com/instamart",
+
+    "Zepto": "zepto.com"
+}
+
+
+# -----------------------------------
+# Extract numeric price
+# -----------------------------------
+
 def extract_price(text):
 
-    price_patterns = [
+    patterns = [
 
         r'₹\s?\d+',
 
@@ -25,56 +42,96 @@ def extract_price(text):
         r'\d+\s?rupees'
     ]
 
-    for pattern in price_patterns:
+    text = text.lower()
 
-        match = re.search(
-            pattern,
-            text.lower()
-        )
+    for pattern in patterns:
+
+        match = re.search(pattern, text)
 
         if match:
 
-            price_text = match.group()
+            value = re.findall(r'\d+', match.group())
 
-            number = re.findall(r'\d+', price_text)
-
-            if number:
-                return int(number[0])
+            if value:
+                return int(value[0])
 
     return None
 
 
-# -----------------------------
-# Check grocery relevance
-# -----------------------------
-def is_grocery_result(title, content):
+# -----------------------------------
+# Search one grocery platform
+# -----------------------------------
 
-    grocery_keywords = [
+def search_platform(
 
-        "bigbasket",
-        "blinkit",
-        "instamart",
-        "zepto",
-        "dmart",
-        "grofers",
-        "grocery",
-        "sugar"
-    ]
+    platform_name,
 
-    combined = f"{title} {content}".lower()
+    domain,
 
-    for keyword in grocery_keywords:
+    product,
 
-        if keyword in combined:
-            return True
+    quantity,
 
-    return False
+    location
+):
+
+    query = f"""
+    site:{domain}
+    buy {quantity} {product}
+    in {location}
+    price
+    """
+
+    response = client.search(
+
+        query=query,
+
+        search_depth="advanced",
+
+        max_results=3
+    )
+
+    best_price = None
+
+    best_result = None
+
+    for result in response["results"]:
+
+        content = result.get("content", "")
+
+        title = result.get("title", "")
+
+        url = result.get("url", "")
+
+        price = extract_price(content)
+
+        if price is not None:
+
+            if best_price is None or price < best_price:
+
+                best_price = price
+
+                best_result = {
+
+                    "platform": platform_name,
+
+                    "title": title,
+
+                    "price": price,
+
+                    "url": url,
+
+                    "content": content
+                }
+
+    return best_result
 
 
-# -----------------------------
-# Main grocery search
-# -----------------------------
-def search_grocery(parsed_query):
+# -----------------------------------
+# Compare all platforms
+# -----------------------------------
+
+def compare_grocery_prices(parsed_query):
 
     product = parsed_query["product"]
 
@@ -82,56 +139,32 @@ def search_grocery(parsed_query):
 
     location = parsed_query["location"]
 
-    search_query = f"""
-    buy {quantity} {product} online in {location}
-    grocery lowest price
-    """
+    all_results = []
 
-    response = client.search(
+    for platform, domain in platforms.items():
 
-        query=search_query,
+        result = search_platform(
 
-        search_depth="advanced",
+            platform,
 
-        max_results=10
-    )
+            domain,
 
-    cleaned_results = []
+            product,
 
-    for result in response["results"]:
+            quantity,
 
-        title = result.get("title", "")
+            location
+        )
 
-        content = result.get("content", "")
+        if result:
+            all_results.append(result)
 
-        url = result.get("url", "")
+    # Sort lowest price first
+    all_results = sorted(
 
-        # Filter grocery results
-        if not is_grocery_result(title, content):
-            continue
-
-        # Extract price
-        price = extract_price(content)
-
-        cleaned_results.append({
-
-            "title": title,
-
-            "price": price,
-
-            "url": url,
-
-            "content": content
-        })
-
-    # Sort by lowest price
-    cleaned_results = sorted(
-
-        cleaned_results,
+        all_results,
 
         key=lambda x: x["price"]
-        if x["price"] is not None
-        else 99999
     )
 
-    return cleaned_results
+    return all_results

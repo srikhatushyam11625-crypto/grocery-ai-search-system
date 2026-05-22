@@ -2,15 +2,15 @@ import streamlit as st
 import pandas as pd
 
 from parser import parse_query
-from search import search_grocery
+from search import compare_grocery_prices
 
-st.title("AI Grocery Price Comparison System")
+st.title("AI Grocery Price Comparison Engine")
 
 query = st.text_input(
-    "Enter grocery search query"
+    "Enter grocery query"
 )
 
-if st.button("Search"):
+if st.button("Compare Prices"):
 
     parsed_query = parse_query(query)
 
@@ -18,30 +18,40 @@ if st.button("Search"):
 
     st.json(parsed_query)
 
-    results = search_grocery(parsed_query)
+    with st.spinner("Searching grocery platforms..."):
+
+        results = compare_grocery_prices(parsed_query)
 
     if len(results) == 0:
 
-        st.warning(
-            "No grocery price results found."
+        st.error(
+            "No valid grocery prices found."
         )
 
     else:
 
-        st.subheader("Price Comparison Results")
+        st.subheader("Platform Comparison")
 
         df = pd.DataFrame(results)
 
-        st.dataframe(df)
+        st.dataframe(
+
+            df[[
+                "platform",
+                "price",
+                "title",
+                "url"
+            ]]
+        )
 
         cheapest = results[0]
 
         st.success(
 
             f"""
-            Cheapest Option:
+            Cheapest Option Found:
 
-            {cheapest['title']}
+            Platform: {cheapest['platform']}
 
             Price: ₹{cheapest['price']}
             """
