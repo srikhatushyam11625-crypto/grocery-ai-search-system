@@ -5,7 +5,7 @@ from parser import parse_query
 from search import compare_grocery_prices
 
 # -----------------------------------
-# Streamlit page settings
+# Page configuration
 # -----------------------------------
 
 st.set_page_config(
@@ -16,15 +16,20 @@ st.set_page_config(
 )
 
 # -----------------------------------
-# Title
+# App title
 # -----------------------------------
 
 st.title("AI Grocery Price Comparison Engine")
 
-st.write(
+st.markdown(
+
     """
     Compare grocery prices across:
-    BigBasket, Blinkit, Instamart and Zepto
+
+    - BigBasket
+    - Blinkit
+    - Instamart
+    - Zepto
     """
 )
 
@@ -34,74 +39,85 @@ st.write(
 
 query = st.text_input(
 
-    "Enter your grocery query",
+    "Enter grocery query",
 
     placeholder="Example: 1 kg sugar near my location-dwarka sec 13,delhi at lowest price"
 )
 
 # -----------------------------------
-# Search button
+# Compare button
 # -----------------------------------
 
 if st.button("Compare Prices"):
 
-    # Parse query
-    parsed_query = parse_query(query)
+    # Empty query validation
+    if query.strip() == "":
 
-    st.subheader("Parsed Query")
-
-    st.json(parsed_query)
-
-    # Loading spinner
-    with st.spinner("Searching grocery platforms..."):
-
-        results = compare_grocery_prices(parsed_query)
-
-    # No results case
-    if len(results) == 0:
-
-        st.error(
-            "No valid grocery prices found."
+        st.warning(
+            "Please enter a valid grocery query."
         )
 
     else:
 
-        # Convert to dataframe
-        df = pd.DataFrame(results)
+        # Parse user query
+        parsed_query = parse_query(query)
 
-        # Rename columns
-        comparison_df = df[[
-            "platform",
-            "price"
-        ]]
+        # Show parsed query
+        st.subheader("Parsed Query")
 
-        comparison_df.columns = [
+        st.json(parsed_query)
 
-            "Platform",
+        # Loading spinner
+        with st.spinner("Searching grocery platforms..."):
 
-            "Price (₹)"
-        ]
+            results = compare_grocery_prices(parsed_query)
 
-        # Show table
-        st.subheader("Platform Comparison")
+        # No results found
+        if len(results) == 0:
 
-        st.dataframe(
+            st.error(
+                "No accurate grocery prices found."
+            )
 
-            comparison_df,
+        else:
 
-            use_container_width=True
-        )
+            # Convert results to DataFrame
+            df = pd.DataFrame(results)
 
-        # Cheapest option
-        cheapest = results[0]
+            # Keep only required columns
+            comparison_df = df[[
+                "platform",
+                "price"
+            ]]
 
-        st.success(
+            # Rename columns
+            comparison_df.columns = [
 
-            f"""
-            Cheapest Option Found
+                "Platform",
 
-            Platform: {cheapest['platform']}
+                "Price (₹)"
+            ]
 
-            Price: ₹{cheapest['price']}
-            """
-        )
+            # Display comparison table
+            st.subheader("Platform Comparison")
+
+            st.dataframe(
+
+                comparison_df,
+
+                width="stretch"
+            )
+
+            # Cheapest option
+            cheapest = results[0]
+
+            st.success(
+
+                f"""
+                Cheapest Option Found
+
+                Platform: {cheapest['platform']}
+
+                Price: ₹{cheapest['price']}
+                """
+            )

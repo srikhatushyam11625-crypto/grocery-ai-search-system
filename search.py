@@ -4,7 +4,10 @@ import re
 from dotenv import load_dotenv
 from tavily import TavilyClient
 
+# -----------------------------------
 # Load environment variables
+# -----------------------------------
+
 load_dotenv()
 
 api_key = os.getenv("TAVILY_API_KEY")
@@ -26,71 +29,100 @@ platforms = {
     "Zepto": "zepto.com"
 }
 
-
 # -----------------------------------
-# Check whether result is relevant
+# Validate relevance
 # -----------------------------------
 
 def is_relevant_result(content):
 
     content = content.lower()
 
-    # Must contain sugar
     if "sugar" not in content:
         return False
 
-    # Must contain 1kg reference
     if "1 kg" not in content and "1kg" not in content:
         return False
 
     return True
 
-
 # -----------------------------------
-# Smart price extraction
+# Smart contextual price extraction
 # -----------------------------------
 
 def extract_price(text):
 
-    patterns = [
-
-        r'₹\s?\d+',
-
-        r'rs\.?\s?\d+',
-
-        r'\d+\s?rupees'
-    ]
-
     text = text.lower()
 
-    detected_prices = []
+    # Remove commas
+    text = text.replace(",", "")
 
-    for pattern in patterns:
+    # Ignore misleading contexts
+    invalid_keywords = [
 
-        matches = re.findall(pattern, text)
+        "off",
+        "discount",
+        "save",
+        "delivery",
+        "minutes",
+        "mins",
+        "%"
+    ]
 
-        for match in matches:
+    # Price regex
+    pattern = r'₹\s?\d+|rs\.?\s?\d+'
 
-            numbers = re.findall(r'\d+', match)
+    matches = re.finditer(pattern, text)
 
-            if numbers:
+    candidate_prices = []
 
-                value = int(numbers[0])
+    for match in matches:
 
-                # Realistic 1kg sugar price range
-                if 20 <= value <= 100:
+        matched_text = match.group()
 
-                    detected_prices.append(value)
+        numbers = re.findall(r'\d+', matched_text)
 
-    if detected_prices:
+        if not numbers:
+            continue
 
-        return min(detected_prices)
+        value = int(numbers[0])
+
+        # Realistic 1kg sugar price range
+        if value < 35 or value > 80:
+            continue
+
+        # Get surrounding text context
+        start = max(0, match.start() - 40)
+
+        end = min(len(text), match.end() + 40)
+
+        context = text[start:end]
+
+        # Reject invalid contexts
+        invalid = False
+
+        for word in invalid_keywords:
+
+            if word in context:
+                invalid = True
+                break
+
+        if invalid:
+            continue
+
+        # Strong relevance signals
+        if "sugar" in context:
+
+            candidate_prices.append(value)
+
+    if candidate_prices:
+
+        # Choose lowest realistic price
+        return min(candidate_prices)
 
     return None
 
-
 # -----------------------------------
-# Search a single grocery platform
+# Search one grocery platform
 # -----------------------------------
 
 def search_platform(
@@ -108,8 +140,8 @@ def search_platform(
 
     query = f"""
     site:{domain}
-    buy {quantity} {product}
-    in {location}
+    "{quantity} {product}"
+    "{location}"
     price
     """
 
@@ -119,7 +151,7 @@ def search_platform(
 
         search_depth="advanced",
 
-        max_results=3
+        max_results=5
     )
 
     best_result = None
@@ -132,14 +164,15 @@ def search_platform(
 
         content = result.get("content", "")
 
-        url = result.get("url", "")
+        # Combine title + content
+        combined_text = f"{title} {content}"
 
         # Relevance filtering
-        if not is_relevant_result(content):
+        if not is_relevant_result(combined_text):
             continue
 
-        # Price extraction
-        price = extract_price(content)
+        # Extract price
+        price = extract_price(combined_text)
 
         if price is not None:
 
@@ -155,7 +188,6 @@ def search_platform(
                 }
 
     return best_result
-
 
 # -----------------------------------
 # Compare all grocery platforms
