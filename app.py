@@ -50,7 +50,7 @@ query = st.text_input(
 
 if st.button("Compare Prices"):
 
-    # Empty query validation
+    # Validate input
     if query.strip() == "":
 
         st.warning(
@@ -59,20 +59,29 @@ if st.button("Compare Prices"):
 
     else:
 
-        # Parse user query
+        # NLP parsing
         parsed_query = parse_query(query)
 
-        # Show parsed query
         st.subheader("Parsed Query")
 
         st.json(parsed_query)
 
-        # Loading spinner
+        # Search spinner
         with st.spinner("Searching grocery platforms..."):
 
-            results = compare_grocery_prices(parsed_query)
+            try:
 
-        # No results found
+                results = compare_grocery_prices(parsed_query)
+
+            except Exception as e:
+
+                st.error(
+                    f"Application Error: {e}"
+                )
+
+                results = []
+
+        # No results case
         if len(results) == 0:
 
             st.error(
@@ -81,7 +90,7 @@ if st.button("Compare Prices"):
 
         else:
 
-            # Convert results to DataFrame
+            # Create dataframe
             df = pd.DataFrame(results)
 
             # Keep only required columns
@@ -108,7 +117,7 @@ if st.button("Compare Prices"):
                 width="stretch"
             )
 
-            # Cheapest option
+            # Cheapest result
             cheapest = results[0]
 
             st.success(

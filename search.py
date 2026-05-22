@@ -30,16 +30,18 @@ platforms = {
 }
 
 # -----------------------------------
-# Validate relevance
+# Check whether result is relevant
 # -----------------------------------
 
 def is_relevant_result(content):
 
     content = content.lower()
 
+    # Must contain sugar
     if "sugar" not in content:
         return False
 
+    # Must contain 1kg reference
     if "1 kg" not in content and "1kg" not in content:
         return False
 
@@ -53,7 +55,6 @@ def extract_price(text):
 
     text = text.lower()
 
-    # Remove commas
     text = text.replace(",", "")
 
     # Ignore misleading contexts
@@ -65,7 +66,8 @@ def extract_price(text):
         "delivery",
         "minutes",
         "mins",
-        "%"
+        "%",
+        "cashback"
     ]
 
     # Price regex
@@ -90,14 +92,14 @@ def extract_price(text):
         if value < 35 or value > 80:
             continue
 
-        # Get surrounding text context
-        start = max(0, match.start() - 40)
+        # Context window
+        start = max(0, match.start() - 50)
 
-        end = min(len(text), match.end() + 40)
+        end = min(len(text), match.end() + 50)
 
         context = text[start:end]
 
-        # Reject invalid contexts
+        # Reject misleading contexts
         invalid = False
 
         for word in invalid_keywords:
@@ -109,14 +111,13 @@ def extract_price(text):
         if invalid:
             continue
 
-        # Strong relevance signals
+        # Strong relevance check
         if "sugar" in context:
 
             candidate_prices.append(value)
 
     if candidate_prices:
 
-        # Choose lowest realistic price
         return min(candidate_prices)
 
     return None
@@ -145,14 +146,30 @@ def search_platform(
     price
     """
 
-    response = client.search(
+    # -------------------------------
+    # SAFE API CALL WITH ERROR HANDLING
+    # -------------------------------
 
-        query=query,
+    try:
 
-        search_depth="advanced",
+        response = client.search(
 
-        max_results=5
-    )
+            query=query,
+
+            search_depth="advanced",
+
+            max_results=5
+        )
+
+    except Exception as e:
+
+        print(f"Error searching {platform_name}: {e}")
+
+        return None
+
+    # -------------------------------
+    # Process results
+    # -------------------------------
 
     best_result = None
 
@@ -164,14 +181,13 @@ def search_platform(
 
         content = result.get("content", "")
 
-        # Combine title + content
         combined_text = f"{title} {content}"
 
         # Relevance filtering
         if not is_relevant_result(combined_text):
             continue
 
-        # Extract price
+        # Extract contextual price
         price = extract_price(combined_text)
 
         if price is not None:
