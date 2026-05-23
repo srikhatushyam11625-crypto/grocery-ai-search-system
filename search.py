@@ -1,16 +1,14 @@
-import os
 import re
 
-from dotenv import load_dotenv
+import streamlit as st
+
 from tavily import TavilyClient
 
 # -----------------------------------
-# Load environment variables
+# Tavily API Key from Streamlit Secrets
 # -----------------------------------
 
-load_dotenv()
-
-api_key = os.getenv("TAVILY_API_KEY")
+api_key = st.secrets["TAVILY_API_KEY"]
 
 client = TavilyClient(api_key=api_key)
 
@@ -30,7 +28,7 @@ platforms = {
 }
 
 # -----------------------------------
-# Check whether result is relevant
+# Validate relevant grocery results
 # -----------------------------------
 
 def is_relevant_result(content):
@@ -70,7 +68,7 @@ def extract_price(text):
         "cashback"
     ]
 
-    # Price regex
+    # Price regex patterns
     pattern = r'₹\s?\d+|rs\.?\s?\d+'
 
     matches = re.finditer(pattern, text)
@@ -92,30 +90,33 @@ def extract_price(text):
         if value < 35 or value > 80:
             continue
 
-        # Context window
-        start = max(0, match.start() - 50)
+        # Context window around detected price
+        start = max(0, match.start() - 60)
 
-        end = min(len(text), match.end() + 50)
+        end = min(len(text), match.end() + 60)
 
         context = text[start:end]
 
-        # Reject misleading contexts
+        # Reject invalid contexts
         invalid = False
 
         for word in invalid_keywords:
 
             if word in context:
+
                 invalid = True
+
                 break
 
         if invalid:
             continue
 
-        # Strong relevance check
+        # Strong contextual relevance
         if "sugar" in context:
 
             candidate_prices.append(value)
 
+    # Return cheapest realistic price
     if candidate_prices:
 
         return min(candidate_prices)
@@ -123,7 +124,7 @@ def extract_price(text):
     return None
 
 # -----------------------------------
-# Search one grocery platform
+# Search a single grocery platform
 # -----------------------------------
 
 def search_platform(
@@ -139,16 +140,16 @@ def search_platform(
     location
 ):
 
-    query = f"""
+    query = f'''
     site:{domain}
     "{quantity} {product}"
     "{location}"
     price
-    """
+    '''
 
-    # -------------------------------
-    # SAFE API CALL WITH ERROR HANDLING
-    # -------------------------------
+    # -----------------------------------
+    # Safe Tavily API call
+    # -----------------------------------
 
     try:
 
@@ -167,9 +168,9 @@ def search_platform(
 
         return None
 
-    # -------------------------------
-    # Process results
-    # -------------------------------
+    # -----------------------------------
+    # Process search results
+    # -----------------------------------
 
     best_result = None
 
@@ -187,7 +188,7 @@ def search_platform(
         if not is_relevant_result(combined_text):
             continue
 
-        # Extract contextual price
+        # Smart contextual price extraction
         price = extract_price(combined_text)
 
         if price is not None:
@@ -238,7 +239,7 @@ def compare_grocery_prices(parsed_query):
 
             all_results.append(result)
 
-    # Sort by lowest price
+    # Sort lowest price first
     all_results = sorted(
 
         all_results,
