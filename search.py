@@ -1,250 +1,272 @@
+# search.py
+
+# search.py
+
+# -----------------------------------
+# Main Search Function
+# -----------------------------------
+# search.py
+
 import re
-
-import streamlit as st
-
 from tavily import TavilyClient
 
 # -----------------------------------
-# Tavily API Key from Streamlit Secrets
+# Tavily API Client
 # -----------------------------------
-
-api_key = st.secrets["TAVILY_API_KEY"]
-
-client = TavilyClient(api_key=api_key)
-
-# -----------------------------------
-# Supported grocery platforms
-# -----------------------------------
-
-platforms = {
-
-    "BigBasket": "bigbasket.com",
-
-    "Blinkit": "blinkit.com",
-
-    "Instamart": "swiggy.com/instamart",
-
-    "Zepto": "zepto.com"
-}
+client = TavilyClient(
+    api_key="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"
+)
 
 # -----------------------------------
-# Validate relevant grocery results
+# Extract Price
 # -----------------------------------
-
-def is_relevant_result(content):
-
-    content = content.lower()
-
-    # Must contain sugar
-    if "sugar" not in content:
-        return False
-
-    # Must contain 1kg reference
-    if "1 kg" not in content and "1kg" not in content:
-        return False
-
-    return True
-
-# -----------------------------------
-# Smart contextual price extraction
-# -----------------------------------
-
 def extract_price(text):
 
-    text = text.lower()
+    if not text:
+        return None
 
     text = text.replace(",", "")
 
-    # Ignore misleading contexts
-    invalid_keywords = [
-
-        "off",
-        "discount",
-        "save",
-        "delivery",
-        "minutes",
-        "mins",
-        "%",
-        "cashback"
+    patterns = [
+        r'₹\s?(\d+(?:\.\d{1,2})?)',
+        r'rs\.?\s?(\d+(?:\.\d{1,2})?)',
+        r'inr\s?(\d+(?:\.\d{1,2})?)'
     ]
 
-    # Price regex patterns
-    pattern = r'₹\s?\d+|rs\.?\s?\d+'
+    prices = []
 
-    matches = re.finditer(pattern, text)
+    for pattern in patterns:
 
-    candidate_prices = []
+        matches = re.findall(pattern, text, re.IGNORECASE)
 
-    for match in matches:
+        for match in matches:
 
-        matched_text = match.group()
+            try:
 
-        numbers = re.findall(r'\d+', matched_text)
+                price = float(match)
 
-        if not numbers:
-            continue
+                # realistic grocery price range
+                if 5 <= price <= 5000:
+                    prices.append(price)
 
-        value = int(numbers[0])
+            except:
+                pass
 
-        # Realistic 1kg sugar price range
-        if value < 35 or value > 80:
-            continue
+    if not prices:
+        return None
 
-        # Context window around detected price
-        start = max(0, match.start() - 60)
+    return min(prices)
 
-        end = min(len(text), match.end() + 60)
-
-        context = text[start:end]
-
-        # Reject invalid contexts
-        invalid = False
-
-        for word in invalid_keywords:
-
-            if word in context:
-
-                invalid = True
-
-                break
-
-        if invalid:
-            continue
-
-        # Strong contextual relevance
-        if "sugar" in context:
-
-            candidate_prices.append(value)
-
-    # Return cheapest realistic price
-    if candidate_prices:
-
-        return min(candidate_prices)
-
-    return None
 
 # -----------------------------------
-# Search a single grocery platform
+# Detect Platform
 # -----------------------------------
+def detect_platform(url):
 
-def search_platform(
+    url = url.lower()
 
-    platform_name,
+    if "blinkit" in url:
+        return "Blinkit"
 
-    domain,
+    elif "zepto" in url:
+        return "Zepto"
 
-    product,
+    elif "bigbasket" in url:
+        return "BigBasket"
 
-    quantity,
+    elif "swiggy" in url or "instamart" in url:
+        return "Instamart"
 
-    location
-):
+    elif "jiomart" in url:
+        return "JioMart"
 
-    query = f'''
-    site:{domain}
-    "{quantity} {product}"
-    "{location}"
-    price
-    '''
+    return "Other"
+
+
+# -----------------------------------
+# Clean Product Title
+# -----------------------------------
+def clean_title(title):
+
+    if not title:
+        return ""
+
+    title = re.sub(r'\s+', ' ', title)
+
+    return title.strip()
+
+
+# -----------------------------------
+# Main Grocery Search Function
+# -----------------------------------
+def search_grocery_prices(product, quantity="1 kg", location="Delhi"):
 
     # -----------------------------------
-    # Safe Tavily API call
+    # Build Search Query
     # -----------------------------------
+    query = (
+        f"buy {quantity} {product} online in {location} "
+        f"price Blinkit Zepto BigBasket Instamart JioMart"
+    )
+
+    print("\n===================================")
+    print("SEARCH QUERY:", query)
+    print("===================================")
 
     try:
 
+        # -----------------------------------
+        # Tavily Search
+        # -----------------------------------
         response = client.search(
-
             query=query,
-
             search_depth="advanced",
-
-            max_results=5
+            max_results=20
         )
+
+        results = response.get("results", [])
+
+        print("\nRAW RESULTS COUNT:", len(results))
+
+        products = []
+
+        # -----------------------------------
+        # Allowed Grocery Domains
+        # -----------------------------------
+        allowed_domains = [
+            "blinkit",
+            "zepto",
+            "bigbasket",
+            "swiggy",
+            "instamart",
+            "jiomart"
+        ]
+
+        # -----------------------------------
+        # Bad / Noisy Domains
+        # -----------------------------------
+        bad_domains = [
+            "linkedin",
+            "telegram",
+            "youtube",
+            "facebook",
+            "instagram",
+            "play.google"
+        ]
+
+        # -----------------------------------
+        # Process Results
+        # -----------------------------------
+        for result in results:
+
+            title = result.get("title", "")
+            content = result.get("content", "")
+            url = result.get("url", "")
+
+            full_text = f"{title} {content}".lower()
+
+            print("\n----------------------------")
+            print("TITLE:", title)
+            print("URL:", url)
+
+            # -----------------------------------
+            # Skip bad domains
+            # -----------------------------------
+            if any(bad in url.lower() for bad in bad_domains):
+
+                print("SKIPPED -> Bad Domain")
+                continue
+
+            # -----------------------------------
+            # Keep only grocery domains
+            # -----------------------------------
+            if not any(domain in url.lower() for domain in allowed_domains):
+
+                print("SKIPPED -> Not Grocery Domain")
+                continue
+
+            # -----------------------------------
+            # Product relevance check
+            # -----------------------------------
+            if product.lower() not in full_text:
+
+                print("SKIPPED -> Product Mismatch")
+                continue
+
+            # -----------------------------------
+            # Extract Price
+            # -----------------------------------
+            price = extract_price(full_text)
+
+            print("PRICE:", price)
+
+            if price is None:
+
+                print("SKIPPED -> No Price Found")
+                continue
+
+            # -----------------------------------
+            # Detect Platform
+            # -----------------------------------
+            platform = detect_platform(url)
+
+            # -----------------------------------
+            # Save Product
+            # -----------------------------------
+            products.append({
+                "platform": platform,
+                "price": price,
+                "title": clean_title(title),
+                "url": url
+            })
+
+        # -----------------------------------
+        # Remove Duplicates
+        # -----------------------------------
+        unique_products = []
+
+        seen = set()
+
+        for item in products:
+
+            key = (item["platform"], item["price"])
+
+            if key not in seen:
+
+                seen.add(key)
+                unique_products.append(item)
+
+        # -----------------------------------
+        # Sort by Lowest Price
+        # -----------------------------------
+        unique_products.sort(key=lambda x: x["price"])
+
+        print("\n===================================")
+        print("FINAL PRODUCTS:")
+        print(unique_products)
+        print("===================================")
+
+        # -----------------------------------
+        # No Results Handling
+        # -----------------------------------
+        if not unique_products:
+
+            return [{
+                "platform": "No Results",
+                "price": "Unavailable",
+                "title": "No accurate grocery prices found. Try broader search keywords.",
+                "url": ""
+            }]
+
+        return unique_products
 
     except Exception as e:
 
-        print(f"Error searching {platform_name}: {e}")
+        print("\nERROR:", str(e))
 
-        return None
-
-    # -----------------------------------
-    # Process search results
-    # -----------------------------------
-
-    best_result = None
-
-    best_price = None
-
-    for result in response["results"]:
-
-        title = result.get("title", "")
-
-        content = result.get("content", "")
-
-        combined_text = f"{title} {content}"
-
-        # Relevance filtering
-        if not is_relevant_result(combined_text):
-            continue
-
-        # Smart contextual price extraction
-        price = extract_price(combined_text)
-
-        if price is not None:
-
-            if best_price is None or price < best_price:
-
-                best_price = price
-
-                best_result = {
-
-                    "platform": platform_name,
-
-                    "price": price
-                }
-
-    return best_result
-
-# -----------------------------------
-# Compare all grocery platforms
-# -----------------------------------
-
-def compare_grocery_prices(parsed_query):
-
-    product = parsed_query["product"]
-
-    quantity = parsed_query["quantity"]
-
-    location = parsed_query["location"]
-
-    all_results = []
-
-    for platform, domain in platforms.items():
-
-        result = search_platform(
-
-            platform,
-
-            domain,
-
-            product,
-
-            quantity,
-
-            location
-        )
-
-        if result:
-
-            all_results.append(result)
-
-    # Sort lowest price first
-    all_results = sorted(
-
-        all_results,
-
-        key=lambda x: x["price"]
-    )
-
-    return all_results
+        return [{
+            "platform": "Error",
+            "price": "Unavailable",
+            "title": str(e),
+            "url": ""
+        }]

@@ -1,132 +1,158 @@
+# app.py
+
 import streamlit as st
 import pandas as pd
 
-from parser import parse_query
-from search import compare_grocery_prices
+from search import search_grocery_prices
 
 # -----------------------------------
-# Page configuration
+# Page Configuration
 # -----------------------------------
-
 st.set_page_config(
-
     page_title="AI Grocery Price Comparison",
-
-    layout="centered"
+    page_icon="🛒",
+    layout="wide"
 )
 
 # -----------------------------------
-# App title
+# Main Title
 # -----------------------------------
+st.title("🛒 AI Grocery Price Comparison Search Engine")
 
-st.title("AI Grocery Price Comparison Engine")
+st.markdown("""
+Compare grocery prices across Blinkit, Zepto, BigBasket, Instamart, and JioMart using AI-powered search.
+""")
 
-st.markdown(
+# -----------------------------------
+# Sidebar Settings
+# -----------------------------------
+st.sidebar.header("Search Settings")
 
-    """
-    Compare grocery prices across:
+location = st.sidebar.text_input(
+    "Enter Location",
+    value="Delhi"
+)
 
-    - BigBasket
-    - Blinkit
-    - Instamart
-    - Zepto
-    """
+quantity = st.sidebar.selectbox(
+    "Select Quantity",
+    [
+        "500 g",
+        "1 kg",
+        "2 kg",
+        "5 kg"
+    ]
 )
 
 # -----------------------------------
-# User input
+# User Input
 # -----------------------------------
-
-query = st.text_input(
-
-    "Enter grocery query",
-
-    placeholder="Example: 1 kg sugar near my location-dwarka sec 13,delhi at lowest price"
+product = st.text_input(
+    "Enter Grocery Product",
+    placeholder="Example: sugar, rajma, poha, daliya"
 )
 
 # -----------------------------------
-# Compare button
+# Search Button
 # -----------------------------------
+search_button = st.button("🔍 Search Prices")
 
-if st.button("Compare Prices"):
+# -----------------------------------
+# Search Logic
+# -----------------------------------
+if search_button:
 
-    # Validate input
-    if query.strip() == "":
+    if not product.strip():
 
-        st.warning(
-            "Please enter a valid grocery query."
-        )
+        st.warning("Please enter a grocery product.")
 
     else:
 
-        # NLP parsing
-        parsed_query = parse_query(query)
+        with st.spinner("Searching grocery prices..."):
 
-        st.subheader("Parsed Query")
-
-        st.json(parsed_query)
-
-        # Search spinner
-        with st.spinner("Searching grocery platforms..."):
-
-            try:
-
-                results = compare_grocery_prices(parsed_query)
-
-            except Exception as e:
-
-                st.error(
-                    f"Application Error: {e}"
-                )
-
-                results = []
-
-        # No results case
-        if len(results) == 0:
-
-            st.error(
-                "No accurate grocery prices found."
+            results = search_grocery_prices(
+                product=product,
+                quantity=quantity,
+                location=location
             )
+
+        # -----------------------------------
+        # Convert to DataFrame
+        # -----------------------------------
+        df = pd.DataFrame(results)
+
+        # -----------------------------------
+        # Handle Errors / Empty Results
+        # -----------------------------------
+        if df.iloc[0]["platform"] == "No Results":
+
+            st.warning(df.iloc[0]["title"])
+
+        elif df.iloc[0]["platform"] == "Error":
+
+            st.error(df.iloc[0]["title"])
 
         else:
 
-            # Create dataframe
-            df = pd.DataFrame(results)
+            # -----------------------------------
+            # Cheapest Product
+            # -----------------------------------
+            cheapest = df.iloc[0]
 
-            # Keep only required columns
-            comparison_df = df[[
-                "platform",
-                "price"
-            ]]
+            st.success(
+                f"✅ Cheapest Price: ₹{cheapest['price']} on {cheapest['platform']}"
+            )
 
-            # Rename columns
+            # -----------------------------------
+            # Platform Comparison Table
+            # -----------------------------------
+            st.subheader("📊 Platform Price Comparison")
+
+            comparison_df = df[["platform", "price"]]
+
             comparison_df.columns = [
-
                 "Platform",
-
                 "Price (₹)"
             ]
 
-            # Display comparison table
-            st.subheader("Platform Comparison")
-
             st.dataframe(
-
                 comparison_df,
-
-                width="stretch"
+                width='stretch'
             )
 
-            # Cheapest result
-            cheapest = results[0]
+            # -----------------------------------
+            # Detailed Results
+            # -----------------------------------
+            st.subheader("🧾 Detailed Search Results")
 
-            st.success(
+            for index, row in df.iterrows():
 
-                f"""
-                Cheapest Option Found
+                with st.container():
 
-                Platform: {cheapest['platform']}
+                    st.markdown("---")
 
-                Price: ₹{cheapest['price']}
-                """
-            )
+                    st.markdown(
+                        f"### {row['platform']}"
+                    )
+
+                    st.write(
+                        f"💰 Price: ₹{row['price']}"
+                    )
+
+                    st.write(
+                        f"🛍️ Product: {row['title']}"
+                    )
+
+                    if row["url"]:
+
+                        st.markdown(
+                            f"[🔗 View Product]({row['url']})"
+                        )
+
+# -----------------------------------
+# Footer
+# -----------------------------------
+st.markdown("---")
+
+st.caption(
+    "Built using Python, Streamlit, Tavily AI Search API, NLP, spaCy, GitHub, and AWS."
+)
